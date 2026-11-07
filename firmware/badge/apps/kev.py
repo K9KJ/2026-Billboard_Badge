@@ -107,8 +107,10 @@ class KevApp(BaseApp):
         self.screen.set_style_bg_color(lvgl.color_hex(0xFFFFFF), 0)
         self.screen.set_style_bg_opa(lvgl.OPA.COVER, 0)
         self.label("CISA / KNOWN EXPLOITED", 18, lvgl.font_montserrat_36, 0xFF0000)
-        window = ("Added %s to %s (UTC)" % (self.data["yesterday"], self.data["today"])
-                  if self.data else "Today + yesterday (UTC)")
+        window_start = (self.data.get("window_start", self.data.get("yesterday"))
+                        if self.data else None)
+        window = ("Added %s to %s (UTC)" % (window_start, self.data["today"])
+                  if self.data else "Today + previous 2 days (UTC)")
         self.label(window, 63, lvgl.font_montserrat_24)
         # A compact name tag fits above the CVE row in the right margin.
         tag = lvgl.obj(self.screen)
@@ -167,7 +169,7 @@ class KevApp(BaseApp):
         else:
             message = "No additions in this date window" if self.data else "Wi-Fi setup required"
             self.label(message, 210, lvgl.font_montserrat_36)
-            detail = ("Window: %s to %s UTC" % (self.data["yesterday"], self.data["today"])
+            detail = ("Window: %s to %s UTC" % (window_start, self.data["today"])
                       if self.data else "Fill in kev-wifi.json, then press B to refresh.")
             self.label(detail, 278, lvgl.font_montserrat_24, height=100)
         self.label(self.status, 573, lvgl.font_montserrat_16, 0xFF0000, height=42)

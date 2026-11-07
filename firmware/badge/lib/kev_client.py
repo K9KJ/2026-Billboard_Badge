@@ -16,7 +16,7 @@ def date_string(seconds):
     return "%04d-%02d-%02d" % parts[:3]
 
 
-def recent_entries(stream, today, yesterday):
+def recent_entries(stream, today, window_start):
     """Parse one vulnerability at a time, including escaped/nested JSON."""
     marker = b'"vulnerabilities"'
     prefix = b""
@@ -78,7 +78,7 @@ def recent_entries(stream, today, yesterday):
                 depth -= 1
                 if depth == 0:
                     entry = json.loads(record)
-                    if entry.get("dateAdded") in (today, yesterday):
+                    if window_start <= entry.get("dateAdded", "") <= today:
                         results.append({key: entry.get(key, "") for key in FIELDS})
                     record = bytearray()
         if found_end:
@@ -149,10 +149,10 @@ def fetch_recent():
         machine.RTC().datetime((clock[0], clock[1], clock[2], clock[6],
                                 clock[3], clock[4], clock[5], 0))
         today = date_string(now)
-        yesterday = date_string(now - 86400)
-        print("KEV downloading catalog for", yesterday, today)
-        entries = recent_entries(secure, today, yesterday)
-        return {"checked": now, "today": today, "yesterday": yesterday, "entries": entries}
+        window_start = date_string(now - 2 * 86400)
+        print("KEV downloading catalog for", window_start, today)
+        entries = recent_entries(secure, today, window_start)
+        return {"checked": now, "today": today, "window_start": window_start, "entries": entries}
     finally:
         if secure is not None:
             secure.close()

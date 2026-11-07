@@ -2,7 +2,7 @@
 
 The CISA KEV menu app connects directly to CISA's public JSON catalog over verified HTTPS. No API key or computer relay is required.
 
-CISA publishes dateAdded as YYYY-MM-DD, so the app displays additions dated today or yesterday in UTC. This window can include more than 24 hours. Each page lists up to five CVE IDs and vulnerability titles. Titles wrap across two lines. The compact cache keeps only the CVE ID, title and date added. CISA's endpoint supplies the full catalog, which the badge filters as it streams the download.
+CISA publishes dateAdded as YYYY-MM-DD, so the app displays additions dated today or either of the previous two dates in UTC. This window can include more than 48 hours. Each page lists up to five CVE IDs and vulnerability titles. Titles wrap across two lines. The compact cache keeps only the CVE ID, title and date added. CISA's endpoint supplies the full catalog, which the badge filters as it streams the download.
 
 ## Wi-Fi setup
 
