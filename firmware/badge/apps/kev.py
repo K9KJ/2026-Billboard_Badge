@@ -105,6 +105,40 @@ class KevApp(BaseApp):
         window = ("Added %s to %s (UTC)" % (self.data["yesterday"], self.data["today"])
                   if self.data else "Today + yesterday (UTC)")
         self.label(window, 63, lvgl.font_montserrat_24)
+        # A compact name tag fits above the CVE row in the right margin.
+        tag = lvgl.obj(self.screen)
+        tag.remove_style_all()
+        tag.set_pos(748, 18)
+        tag.set_size(180, 112)
+        tag.set_style_bg_color(lvgl.color_hex(0xFFFFFF), 0)
+        tag.set_style_bg_opa(lvgl.OPA.COVER, 0)
+        tag.set_style_border_color(lvgl.color_hex(0xFF0000), 0)
+        tag.set_style_border_width(3, 0)
+        tag.set_style_radius(8, 0)
+
+        band = lvgl.obj(tag)
+        band.remove_style_all()
+        band.set_pos(0, 0)
+        band.set_size(174, 32)
+        band.set_style_bg_color(lvgl.color_hex(0xFF0000), 0)
+        band.set_style_bg_opa(lvgl.OPA.COVER, 0)
+
+        caption = lvgl.label(tag)
+        caption.set_text("My Name Is")
+        caption.set_width(174)
+        caption.set_pos(0, 6)
+        caption.set_style_text_font(lvgl.font_montserrat_16, 0)
+        caption.set_style_text_color(lvgl.color_hex(0xFFFFFF), 0)
+        caption.set_style_text_align(lvgl.TEXT_ALIGN.CENTER, 0)
+
+        name = lvgl.label(tag)
+        name.set_text("TJ")
+        name.set_width(174)
+        name.set_pos(0, 40)
+        name.set_style_text_font(lvgl.font_montserrat_48, 0)
+        name.set_style_text_color(lvgl.color_hex(0x000000), 0)
+        name.set_style_text_align(lvgl.TEXT_ALIGN.CENTER, 0)
+
         entries = self.data["entries"] if self.data else []
         if self.data:
             checked = self.data["checked"]
