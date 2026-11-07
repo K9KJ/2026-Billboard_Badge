@@ -120,6 +120,7 @@ def fetch_recent():
         if len(status) < 2 or status[1] != b"200":
             raise OSError("CISA HTTP status " + str(status))
         header_bytes = 0
+        server_time = None
         while True:
             line = secure.readline()
             header_bytes += len(line)
@@ -127,14 +128,31 @@ def fetch_recent():
                 raise ValueError("Invalid HTTP headers")
             if not line.strip():
                 break
+            if line.lower().startswith(b"date:"):
+                parts = line.decode().split()
+                # HTTP Date is authenticated by the already verified TLS channel.
+                months = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+                if len(parts) == 7 and parts[-1] == "GMT":
+                    hour, minute, second = [int(value) for value in parts[5].split(":")]
+                    server_time = time.mktime((int(parts[4]), months.index(parts[3]) + 1,
+                                               int(parts[2]), hour, minute, second, 0, 0, 0))
             if line.lower().startswith(b"transfer-encoding:"):
                 if b"identity" not in line.lower():
                     raise ValueError("Unsupported HTTP transfer encoding")
             if line.lower().startswith(b"content-encoding:"):
                 if b"identity" not in line.lower():
                     raise ValueError("Unsupported HTTP compression")
+        if server_time is None:
+            raise ValueError("CISA response is missing a valid Date header")
+        now = server_time
+        import machine
+        clock = time.gmtime(now)
+        machine.RTC().datetime((clock[0], clock[1], clock[2], clock[6],
+                                clock[3], clock[4], clock[5], 0))
         today = date_string(now)
         yesterday = date_string(now - 86400)
+        print("KEV downloading catalog for", yesterday, today)
         entries = recent_entries(secure, today, yesterday)
         return {"checked": now, "today": today, "yesterday": yesterday, "entries": entries}
     finally:

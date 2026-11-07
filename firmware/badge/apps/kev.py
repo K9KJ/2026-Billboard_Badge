@@ -61,7 +61,13 @@ class KevApp(BaseApp):
                         wlan.disconnect()
                         raise OSError("Wi-Fi connection failed")
                     await aio.sleep_ms(200)
-            ntptime.settime()
+            try:
+                ntptime.settime()
+            except OSError:
+                # With a valid RTC, TLS can still verify CISA. Its authenticated
+                # HTTP Date sets the exact UTC window before filtering.
+                if time.gmtime()[0] < 2025:
+                    raise ValueError("Set badge clock or allow NTP, then retry")
             result = fetch_recent()
             # Replace the cache only after a complete, validated download.
             with open(CACHE + ".tmp", "w") as file:
@@ -70,6 +76,7 @@ class KevApp(BaseApp):
             self.data = result
             self.page = 0
             self.status = "Live CISA feed"
+            print("KEV updated:", [entry["cveID"] for entry in result["entries"]])
             self.next_check = time.ticks_add(time.ticks_ms(), REFRESH_MS)
         except Exception as error:
             print("KEV refresh failed:", error)

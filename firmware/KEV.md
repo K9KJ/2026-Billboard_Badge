@@ -14,7 +14,7 @@ The optional "startup_app": "CISA KEV" field in /data/panel_config.json makes th
 
 Restart the badge, select CISA KEV with Menu +/- and press A or B to launch it. A advances to the next CVE, B refreshes, and Menu +/- returns to app selection. While the app is selected it refreshes every six hours and retries failures after fifteen minutes.
 
-The clock synchronizes using NTP before each fetch. The app checks CISA's certificate and hostname against the included DigiCert Global Root G3 CA. If CISA changes its certificate chain, the trust file may need updating.
+The clock attempts NTP before each fetch. If NTP is blocked and the RTC already has a usable date, verified HTTPS still works. The authenticated HTTP Date from CISA then sets the UTC clock and date window. After complete power loss, NTP or a one-time clock setup may be needed. The app checks CISA's certificate and hostname against the included DigiCert Global Root G3 CA. If CISA changes its certificate chain, the trust file may need updating.
 
 A complete successful result replaces /data/kev-cache.json. Failed refreshes retain the previous result and show an error alongside the original check time and date window. No additions produces an explicit empty view. Downloads parse one vulnerability at a time to bound memory use. DNS, NTP and HTTPS operations can briefly pause button handling.
 
