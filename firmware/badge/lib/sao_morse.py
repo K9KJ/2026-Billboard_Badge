@@ -44,3 +44,12 @@ def start(pin_number=LED_PIN, channel=RMT_CHANNEL):
     _transmitters[channel] = transmitter
     print("Morse: CQ at", WORDS_PER_MINUTE, "WPM on GPIO", pin_number)
     return transmitter
+
+
+def stop(pin_number=LED_PIN, channel=RMT_CHANNEL):
+    """Release the transmitter and leave its LED switched off."""
+    transmitter = _transmitters.get(channel)
+    if transmitter is not None:
+        transmitter.deinit()
+        del _transmitters[channel]
+    Pin(pin_number, Pin.OUT, value=int(not ACTIVE_HIGH))

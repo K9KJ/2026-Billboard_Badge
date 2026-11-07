@@ -6,7 +6,7 @@ from apps.base_app import BaseApp
 from lib.button import MenuMinus, MenuPlus, UserA, UserB, Boot
 from lib.epd import display, display_height
 from lib.led_bar import leds
-from lib.sao_morse import start as start_morse
+from lib.sao_morse import start as start_morse, stop as stop_morse
 
 
 _WHITE = lvgl.color_hex(0xFFFFFF)
@@ -70,3 +70,5 @@ class NametagApp(BaseApp):
 
         elif UserA.pressed():
             start_morse(pin_number=2, channel=1)
+        elif UserB.pressed():
+            stop_morse(pin_number=2, channel=1)
