@@ -32,13 +32,20 @@ import asyncio as aio
 import btree
 import framebuf
 import gc
-from machine import Pin, SoftSPI
+import micropython
+from machine import Pin, SPI, SoftSPI
 from micropython import const
 import time
 
 import lvgl
 
 from lib.large_png import show_png
+
+# Adapted from Hack-a-Day/2026-Billboard_Badge PR #3 (FacioErgoSum).
+USE_HW_SPI = True
+SPI_BAUD = 8_000_000
+_SPI_CHUNK = const(4096)
+_BUSY_POLL_MS = const(10)
 
 EPD_CS1_PIN = Pin(13, mode=Pin.OUT)
 EPD_CS2_PIN = Pin(3, mode=Pin.OUT)
@@ -74,6 +81,88 @@ def reverse_byte(byte: int) -> int:
     return byte
 
 
+
+
+_REVERSE_LUT = bytes(reverse_byte(b) for b in range(256))
+_IDENTITY_LUT = bytes(range(256))
+
+@micropython.viper
+def _split_halves(src, left, right, lut):
+    """Split a 120-byte-wide plane into two 60-byte-wide halves (one per
+    CoG), mapping every byte through `lut` (bit reversal or identity)."""
+    s = ptr8(src)
+    l = ptr8(left)
+    r = ptr8(right)
+    t = ptr8(lut)
+    row = 0
+    while row < 672:
+        sb = row * 120
+        db = row * 60
+        c = 0
+        while c < 60:
+            l[db + c] = t[s[sb + c]]
+            r[db + c] = t[s[sb + 60 + c]]
+            c += 1
+        row += 1
+
+@micropython.viper
+def _rgb565_to_planes(src, stride: int, w: int, h: int, x1: int, y1: int, black, red):
+    """Convert an LVGL RGB565 area into the black/red planes, using the same
+    color rule as before (top bit of each channel)."""
+    s = ptr8(src)
+    bk = ptr8(black)
+    rd = ptr8(red)
+    row = 0
+    while row < h:
+        base = (y1 + row) * 960 + x1
+        ro = row * stride
+        col = 0
+        while col < w:
+            i = ro + col * 2
+            c = s[i] | (s[i + 1] << 8)  # RGB565, little-endian
+            idx = base + col
+            byte = idx >> 3
+            mask = 128 >> (idx & 7)
+            clear = mask ^ 255
+            r_hi = c & 0x8000
+            g_hi = c & 0x0400
+            b_hi = c & 0x0010
+            if r_hi and g_hi == 0 and b_hi == 0:
+                rd[byte] = rd[byte] | mask
+                bk[byte] = bk[byte] & clear
+            elif r_hi == 0 and g_hi == 0 and b_hi == 0:
+                bk[byte] = bk[byte] | mask
+                rd[byte] = rd[byte] & clear
+            else:
+                bk[byte] = bk[byte] & clear
+                rd[byte] = rd[byte] & clear
+            col += 1
+        row += 1
+
+def _busy() -> bool:
+    """True while either CoG is busy (BUSY is active low)."""
+    return not EPD_BUSY1_PIN.value() or not EPD_BUSY2_PIN.value()
+
+async def _wait_not_busy(timeout_ms=180_000):
+    t0 = time.ticks_ms()
+    while _busy():
+        if time.ticks_diff(time.ticks_ms(), t0) > timeout_ms:
+            raise OSError("EPD BUSY timeout")
+        await aio.sleep_ms(_BUSY_POLL_MS)
+
+def _make_spi():
+    if USE_HW_SPI:
+        try:
+            return SPI(1, baudrate=SPI_BAUD, polarity=0, phase=0,
+                       sck=EPD_SCL_PIN, mosi=EPD_SDA_PIN, miso=EPD_SPI_MISO_PIN)
+        except Exception as ex:
+            print(f"EPD: hardware SPI failed ({ex}), using SoftSPI")
+    spi = SoftSPI(
+        baudrate=SPI_BAUD, sck=EPD_SCL_PIN, mosi=EPD_SDA_PIN, miso=EPD_SPI_MISO_PIN
+    )
+    spi.init()
+    return spi
+
 class EPaperDisplay:
     width = display_width
     height = display_height
@@ -84,10 +173,9 @@ class EPaperDisplay:
         EPD_RST_PIN.value(True)
         EPD_CS1_PIN.value(True)
         EPD_CS2_PIN.value(True)
-        self.spi = SoftSPI(
-            baudrate=8_000_000, sck=EPD_SCL_PIN, mosi=EPD_SDA_PIN, miso=EPD_SPI_MISO_PIN
-        )
-        self.spi.init()
+        self.spi = _make_spi()
+        print('EPD SPI:', self.spi)
+        self.last_error = None
 
         try:
             with open("/data/hwconf", "rb") as f:
@@ -141,7 +229,6 @@ class EPaperDisplay:
         self.lv_screen.set_size(display_width, display_height)
 
     def _lv_flush(self, disp, area, color_p):
-        print("Calling EPaperDisplay._lv_flush")
         x1, y1 = area.x1, area.y1
         w = area.x2 - x1 + 1
         h = area.y2 - y1 + 1
@@ -150,33 +237,19 @@ class EPaperDisplay:
         except AttributeError:
             stride = w * 2
         src = color_p.__dereference__(stride * h)
-        width = display_width
-        for row in range(h):
-            base = (y1 + row) * width + x1
-            row_off = row * stride
-            for col in range(w):
-                i = row_off + col * 2
-                c = src[i] | (src[i + 1] << 8)  # RGB565, little-endian
-                r = (c >> 11) & 0x1F
-                g = (c >> 5) & 0x3F
-                b = c & 0x1F
-                idx = base + col
-                byte = idx >> 3
-                mask = 1 << (7 - (idx & 7))
-                clear = mask ^ 0xFF
-                if (r & 0x10) and not (g & 0x20) and not (b & 0x10):
-                    self._framebuffer_red[byte] |= mask
-                    self._framebuffer_black[byte] &= clear
-                elif not (r & 0x10) and not (g & 0x20) and not (b & 0x10):
-                    self._framebuffer_black[byte] |= mask
-                    self._framebuffer_red[byte] &= clear
-                else:
-                    self._framebuffer_black[byte] &= clear
-                    self._framebuffer_red[byte] &= clear
+        try:
+            _rgb565_to_planes(src, stride, w, h, x1, y1,
+                              self._framebuffer_black, self._framebuffer_red)
+        except TypeError:
+            # In case this LVGL build returns something viper can't point at
+            _rgb565_to_planes(bytes(src), stride, w, h, x1, y1,
+                              self._framebuffer_black, self._framebuffer_red)
         disp.flush_ready()
 
     def update(self):
         """Done updating the framebuffer, update the display with the contents"""
+        self.last_error = None
+        self._display_updated.clear()
         self._framebuffer_ready.set()
 
     def clear(self):
@@ -210,45 +283,24 @@ class EPaperDisplay:
         black_right = bytearray(half_frame_one_color_size)
         red_left = bytearray(half_frame_one_color_size)
         red_right = bytearray(half_frame_one_color_size)
+        lut = _REVERSE_LUT if self._reverse_fb_bits else _IDENTITY_LUT
         while True:
-            if self._framebuffer_ready.is_set():
-                self._display_updated.clear()
-                fbk = memoryview(self._framebuffer_black)
-                fbr = memoryview(self._framebuffer_red)
-                for row in range(display_height):
-                    black_left[
-                        row * display_half_width_bytes : (row + 1)
-                        * display_half_width_bytes
-                    ] = fbk[
-                        row * display_width_bytes : row * display_width_bytes
-                        + display_half_width_bytes
-                    ]
-                    black_right[
-                        row * display_half_width_bytes : (row + 1)
-                        * display_half_width_bytes
-                    ] = fbk[
-                        row * display_width_bytes + display_half_width_bytes : (row + 1)
-                        * display_width_bytes
-                    ]
-                    red_left[
-                        row * display_half_width_bytes : (row + 1)
-                        * display_half_width_bytes
-                    ] = fbr[
-                        row * display_width_bytes : row * display_width_bytes
-                        + display_half_width_bytes
-                    ]
-                    red_right[
-                        row * display_half_width_bytes : (row + 1)
-                        * display_half_width_bytes
-                    ] = fbr[
-                        row * display_width_bytes + display_half_width_bytes : (row + 1)
-                        * display_width_bytes
-                    ]
+            await self._framebuffer_ready.wait()
+            # Clear before copying: an update() requested while this refresh
+            # runs then triggers another one instead of being dropped.
+            self._framebuffer_ready.clear()
+            _split_halves(self._framebuffer_black, black_left, black_right, lut)
+            _split_halves(self._framebuffer_red, red_left, red_right, lut)
+            try:
                 await self.global_update(black_left, red_left, black_right, red_right)
-                self._framebuffer_ready.clear()
-                gc.collect()
+            except Exception as ex:
+                import sys
+                self.last_error = ex
+                print("EPD: update failed")
+                sys.print_exception(ex)
+            gc.collect()
+            if not self._framebuffer_ready.is_set():
                 self._display_updated.set()
-            await aio.sleep_ms(100)
 
     async def global_update(
         self,
@@ -260,9 +312,9 @@ class EPaperDisplay:
         print("Updating display to new image")
         await self._reset()
         tick = time.ticks_ms()
-        self._send_images(black_left, red_left, black_right, red_right)
+        await self._send_images(black_left, red_left, black_right, red_right)
         tock = time.ticks_ms()
-        print(tock-tick)
+        print("EPD transfer ms:", time.ticks_diff(tock, tick))
         
         print("display working")
         tick = time.ticks_ms()
@@ -272,7 +324,7 @@ class EPaperDisplay:
         await self._dcdc_soft_shutdown()
         print("Done updating display")
         tock = time.ticks_ms()
-        print(tock-tick)
+        print("EPD panel phase ms:", time.ticks_diff(tock, tick))
 
 
     async def cog_initial(self):
@@ -369,9 +421,24 @@ class EPaperDisplay:
         self.spi.write(bytes(data))
         EPD_CS2_PIN.value(True)
 
+    async def _send_plane(self, cs, other_cs, index: int, plane):
+        """Send one half-plane to one CoG in chunks, letting the other asyncio
+        tasks (LEDs, buttons) run in between. CS stays low throughout."""
+        EPD_DC_PIN.value(False)
+        cs.value(False)
+        other_cs.value(True)
+        self.spi.write(bytes([index]))
+        cs.value(True)
+        EPD_DC_PIN.value(True)
+        cs.value(False)
+        mv = memoryview(plane)
+        for i in range(0, len(mv), _SPI_CHUNK):
+            self.spi.write(mv[i:i + _SPI_CHUNK])
+            await aio.sleep_ms(0)
+        cs.value(True)
+
     async def _display_refresh(self):
-        while not EPD_BUSY1_PIN.value() or not EPD_BUSY2_PIN.value():
-            await aio.sleep_ms(100)
+        await _wait_not_busy()
         self._send_index_data(0x15, [0x3C])
         await aio.sleep_ms(5)
 
@@ -388,7 +455,7 @@ class EPaperDisplay:
         EPD_CS2_PIN.value(True)
         await aio.sleep_ms(5)
 
-    def _send_images(
+    async def _send_images(
         self,
         black_left: bytearray | bytes | memoryview[int],
         red_left: bytearray | bytes | memoryview[int],
@@ -400,25 +467,20 @@ class EPaperDisplay:
         assert len(black_right) == half_frame_one_color_size
         assert len(red_right) == half_frame_one_color_size
 
-        if self._reverse_fb_bits:
-            black_left = bytes(reverse_byte(b) for b in black_left)
-            red_left = bytes(reverse_byte(b) for b in red_left)
-            black_right = bytes(reverse_byte(b) for b in black_right)
-            red_right = bytes(reverse_byte(b) for b in red_right)
-
         # DUW for both left and right halves
         self._send_index_data(0x13, [0x00, 0x3B, 0x00, 0x00, 0x9F, 0x02])
         # DRFW for Both left and right halves
         self._send_index_data(0x90, [0x00, 0x3B, 0x00, 0xA9])
         ram_rw_data = [0x3B, 0x00, 0x14]
+        left, right = EPD_CS1_PIN, EPD_CS2_PIN
         self._send_index_data_left(0x12, ram_rw_data)  # RAM_RW for left half
-        self._send_index_data_left(0x10, black_left)  # Black frame for left half
+        await self._send_plane(left, right, 0x10, black_left)  # Black frame for left half
         self._send_index_data_left(0x12, ram_rw_data)  # RAM_RW for left half
-        self._send_index_data_left(0x11, red_left)  # Red frame for left half
+        await self._send_plane(left, right, 0x11, red_left)  # Red frame for left half
         self._send_index_data_right(0x12, ram_rw_data)  # RAM_RW for right half
-        self._send_index_data_right(0x10, black_right)  # black frame for right half
+        await self._send_plane(right, left, 0x10, black_right)  # black frame for right half
         self._send_index_data_right(0x12, ram_rw_data)  # RAM_RW for right half
-        self._send_index_data_right(0x11, red_right)  # Red frame for right half
+        await self._send_plane(right, left, 0x11, red_right)  # Red frame for right half
 
 
     async def _dcdc_soft_start(self):
@@ -460,14 +522,12 @@ class EPaperDisplay:
         Implemented after image data are uploaded to CoG
         Specific to mid-sized EPDs only
         """
-        while not EPD_BUSY1_PIN.value() or not EPD_BUSY2_PIN.value():
-            await aio.sleep_ms(100)
+        await _wait_not_busy()
         self._send_index_data(0x09, [0x7F])
         self._send_index_data(0x05, [0x7D])
         self._send_index_data(0x09, [0x00])
         await aio.sleep_ms(200)
-        while not EPD_BUSY1_PIN.value() or not EPD_BUSY2_PIN.value():
-            await aio.sleep_ms(100)
+        await _wait_not_busy()
         EPD_DC_PIN.value(False)
         EPD_CS1_PIN.value(False)
         EPD_RST_PIN.value(False)

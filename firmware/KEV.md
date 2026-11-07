@@ -19,3 +19,11 @@ The clock attempts NTP before each fetch. If NTP is blocked and the RTC already 
 A complete successful result replaces /data/kev-cache.json. Failed refreshes retain the previous result and show an error alongside the original check time and date window. No additions produces an explicit empty view. Downloads parse one vulnerability at a time to bound memory use. DNS, NTP and HTTPS operations can briefly pause button handling.
 
 On this badge's LVGL firmware, repeated MicroPython soft resets can cause display initialization failures. A hardware reset restores normal initialization. File uploads should be followed by a hardware reset.
+
+## Display performance
+
+The full-color driver incorporates the hardware SPI, Viper pixel conversion, framebuffer preparation and queued-refresh fixes from Hack-a-Day/2026-Billboard_Badge PR #3 by FacioErgoSum (reviewed at 67fd7b8183b70fe6f327ab1af5a7f809ed994b47). BUSY polling has a timeout that raises an error. The display task records failures in display.last_error and logs them.
+
+The KEV app refreshes its screen after the fetch completes. It shows the saved result at startup and prints connection progress to serial.
+
+On this badge, the initial optimized dashboard render took 618 ms, image transfer took 204 ms (previously about 5,303 ms), and the full-color panel phase took 32,795 ms. Full-color waveforms remain in use. Optional short-waveform refresh is a separate future step requiring image-quality checks.

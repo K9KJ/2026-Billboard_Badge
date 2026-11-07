@@ -38,10 +38,7 @@ class KevApp(BaseApp):
             pass
 
     async def refresh(self):
-        self.status = "Connecting to Wi-Fi..."
-        self.draw()
-        # Let the display task consume this frame before networking starts.
-        await aio.sleep_ms(200)
+        print("KEV refresh starting")
         while not display.is_done_updating():
             await aio.sleep_ms(100)
         try:
@@ -100,6 +97,7 @@ class KevApp(BaseApp):
         label.set_style_text_color(lvgl.color_hex(color), 0)
 
     def draw(self):
+        render_start = time.ticks_ms()
         old_screen = self.screen
         self.screen = lvgl.obj()
         self.screen.remove_style_all()
@@ -179,6 +177,7 @@ class KevApp(BaseApp):
         self.label(controls, 630, lvgl.font_montserrat_16)
         lvgl.screen_load(self.screen)
         lvgl.refr_now(display.lv_display)
+        print("KEV render ms:", time.ticks_diff(time.ticks_ms(), render_start))
         display.update()
         if old_screen is not None:
             old_screen.delete()
