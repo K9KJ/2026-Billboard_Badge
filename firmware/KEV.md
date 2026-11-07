@@ -37,3 +37,5 @@ The requested triple space is implemented as three seven-unit word gaps between 
 LED_PIN and ACTIVE_HIGH in lib/sao_morse.py control wiring. Startup errors are logged without preventing the dashboard from starting.
 
 The short-waveform display test measured about 6.5 seconds but visibly darkened the red. Following the user's preference, the dashboard uses the optimized full-color driver with brighter red and approximately 33-second panel refreshes.
+
+SAO Port 1 GPIO1 (ESP32 GPIO2, active-high) starts the same repeating CQ signal when A is pressed inside CISA KEV. It uses RMT channel 1. A also advances pages when the list spans multiple pages. Repeated presses reuse the running transmitter. SAO1 continues blinking after it has been started, including after leaving the app, until the badge restarts.

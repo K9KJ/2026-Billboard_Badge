@@ -9,7 +9,7 @@ WORDS_PER_MINUTE = 13
 WORD_GAPS = 3
 CLOCK_DIVIDER = 255
 RMT_CHANNEL = 0
-_transmitter = None
+_transmitters = {}
 
 
 def pulse_levels():
@@ -26,15 +26,14 @@ def pulse_levels():
     return tuple(levels)
 
 
-def start():
+def start(pin_number=LED_PIN, channel=RMT_CHANNEL):
     """Start a repeating RMT sequence independent of the Python event loop."""
-    global _transmitter
-    if _transmitter is not None:
-        return _transmitter
+    if channel in _transmitters:
+        return _transmitters[channel]
     unit_ticks = int(RMT.source_freq() * 1.2 /
                      (WORDS_PER_MINUTE * CLOCK_DIVIDER) + 0.5)
-    pin = Pin(LED_PIN, Pin.OUT, value=int(not ACTIVE_HIGH))
-    transmitter = RMT(RMT_CHANNEL, pin=pin, clock_div=CLOCK_DIVIDER,
+    pin = Pin(pin_number, Pin.OUT, value=int(not ACTIVE_HIGH))
+    transmitter = RMT(channel, pin=pin, clock_div=CLOCK_DIVIDER,
                       idle_level=not ACTIVE_HIGH)
     try:
         transmitter.loop(True)
@@ -42,6 +41,6 @@ def start():
     except Exception:
         transmitter.deinit()
         raise
-    _transmitter = transmitter
-    print("SAO2 Morse: CQ at", WORDS_PER_MINUTE, "WPM on GPIO", LED_PIN)
+    _transmitters[channel] = transmitter
+    print("Morse: CQ at", WORDS_PER_MINUTE, "WPM on GPIO", pin_number)
     return transmitter
