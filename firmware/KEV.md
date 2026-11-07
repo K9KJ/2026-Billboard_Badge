@@ -2,7 +2,7 @@
 
 The CISA KEV menu app connects directly to CISA's public JSON catalog over verified HTTPS. No API key or computer relay is required.
 
-CISA publishes dateAdded as YYYY-MM-DD, so the app displays additions dated today or yesterday in UTC. This window can include more than 24 hours. Each page shows the CVE, vendor/product, description, required action, due date and CISA's ransomware-use flag. Long text is shortened to fit.
+CISA publishes dateAdded as YYYY-MM-DD, so the app displays additions dated today or yesterday in UTC. This window can include more than 24 hours. Each page lists up to five CVE IDs and vulnerability titles. Titles wrap across two lines. The compact cache keeps only the CVE ID, title and date added. CISA's endpoint supplies the full catalog, which the badge filters as it streams the download.
 
 ## Wi-Fi setup
 
@@ -12,7 +12,7 @@ Upload firmware/badge/apps/kev.py to /apps/kev.py, firmware/badge/lib/kev_client
 
 The optional "startup_app": "CISA KEV" field in /data/panel_config.json makes the dashboard launch automatically at power-on. main.py supports this setting by app name. Without it, normal menu startup is used.
 
-Restart the badge, select CISA KEV with Menu +/- and press A or B to launch it. A advances to the next CVE, B refreshes, and Menu +/- returns to app selection. While the app is selected it refreshes every six hours and retries failures after fifteen minutes.
+Restart the badge, select CISA KEV with Menu +/- and press A or B to launch it. A advances to the next page when more than five CVEs match, B refreshes, and Menu +/- returns to app selection. While the app is selected it refreshes every six hours and retries failures after fifteen minutes.
 
 The clock attempts NTP before each fetch. If NTP is blocked and the RTC already has a usable date, verified HTTPS still works. The authenticated HTTP Date from CISA then sets the UTC clock and date window. After complete power loss, NTP or a one-time clock setup may be needed. The app checks CISA's certificate and hostname against the included DigiCert Global Root G3 CA. If CISA changes its certificate chain, the trust file may need updating.
 

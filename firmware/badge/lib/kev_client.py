@@ -8,9 +8,7 @@ import time
 
 HOST = "www.cisa.gov"
 PATH = "/sites/default/files/feeds/known_exploited_vulnerabilities.json"
-FIELDS = ("cveID", "vendorProject", "product", "vulnerabilityName",
-          "dateAdded", "shortDescription", "requiredAction", "dueDate",
-          "knownRansomwareCampaignUse")
+FIELDS = ("cveID", "vulnerabilityName", "dateAdded")
 
 
 def date_string(seconds):

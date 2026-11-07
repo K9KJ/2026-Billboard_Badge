@@ -16,6 +16,7 @@ from lib.kev_client import date_string, fetch_recent
 CACHE = "/data/kev-cache.json"
 REFRESH_MS = 6 * 60 * 60 * 1000
 RETRY_MS = 15 * 60 * 1000
+PAGE_SIZE = 5
 
 
 class KevApp(BaseApp):
@@ -84,6 +85,10 @@ class KevApp(BaseApp):
             self.next_check = time.ticks_add(time.ticks_ms(), RETRY_MS)
         self.draw()
 
+    def page_count(self):
+        count = len(self.data["entries"]) if self.data else 0
+        return max(1, (count + PAGE_SIZE - 1) // PAGE_SIZE)
+
     def label(self, text, y, font, color=0x000000, height=None):
         label = lvgl.label(self.screen)
         label.set_text(text)
@@ -146,18 +151,19 @@ class KevApp(BaseApp):
             checked_text = "%s %02d:%02d UTC" % (date_string(checked), clock[3], clock[4])
             self.label("Checked " + checked_text, 100, lvgl.font_montserrat_24)
         if entries:
-            self.page %= len(entries)
-            entry = entries[self.page]
-            self.label(entry["cveID"] + "   (%d/%d)" % (self.page + 1, len(entries)),
-                       146, lvgl.font_montserrat_36, 0xFF0000)
-            product = entry["vendorProject"] + " / " + entry["product"]
-            self.label(product[:100], 195, lvgl.font_montserrat_28, height=70)
-            self.label(entry["shortDescription"][:300], 275, lvgl.font_montserrat_24, height=150)
-            self.label("Action: " + entry["requiredAction"][:165],
-                       432, lvgl.font_montserrat_24, height=90)
-            self.label("Added %s | Due %s | Ransomware: %s" %
-                       (entry["dateAdded"], entry["dueDate"], entry["knownRansomwareCampaignUse"]),
-                       531, lvgl.font_montserrat_16)
+            pages = self.page_count()
+            self.page %= pages
+            self.label("%d recent CVEs | Page %d/%d" %
+                       (len(entries), self.page + 1, pages),
+                       146, lvgl.font_montserrat_24)
+            start = self.page * PAGE_SIZE
+            for row, entry in enumerate(entries[start:start + PAGE_SIZE]):
+                y = 185 + row * 76
+                self.label(entry["cveID"], y, lvgl.font_montserrat_24, 0xFF0000)
+                self.label(entry.get("vulnerabilityName") or
+                           (entry.get("vendorProject", "") + " " +
+                            entry.get("product", "")).strip() or "Title unavailable",
+                           y + 30, lvgl.font_montserrat_16, height=40)
         else:
             message = "No additions in this date window" if self.data else "Wi-Fi setup required"
             self.label(message, 210, lvgl.font_montserrat_36)
@@ -165,7 +171,10 @@ class KevApp(BaseApp):
                       if self.data else "Fill in kev-wifi.json, then press B to refresh.")
             self.label(detail, 278, lvgl.font_montserrat_24, height=100)
         self.label(self.status, 573, lvgl.font_montserrat_16, 0xFF0000, height=42)
-        self.label("A: Next CVE    B: Refresh    Menu +/-: Apps", 630, lvgl.font_montserrat_16)
+        controls = "B: Refresh    Menu +/-: Apps"
+        if self.page_count() > 1:
+            controls = "A: Next page    " + controls
+        self.label(controls, 630, lvgl.font_montserrat_16)
         lvgl.screen_load(self.screen)
         lvgl.refr_now(display.lv_display)
         display.update()
@@ -176,8 +185,8 @@ class KevApp(BaseApp):
         if self.launched:
             self.draw()
         if display.is_done_updating():
-            if UserA.pressed() and self.data and self.data["entries"]:
-                self.page = (self.page + 1) % len(self.data["entries"])
+            if UserA.pressed() and self.page_count() > 1:
+                self.page = (self.page + 1) % self.page_count()
                 self.draw()
             elif UserB.pressed() or time.ticks_diff(time.ticks_ms(), self.next_check) >= 0:
                 await self.refresh()
