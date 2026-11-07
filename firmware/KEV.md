@@ -27,3 +27,13 @@ The full-color driver incorporates the hardware SPI, Viper pixel conversion, fra
 The KEV app refreshes its screen after the fetch completes. It shows the saved result at startup and prints connection progress to serial.
 
 On this badge, the initial optimized dashboard render took 618 ms, image transfer took 204 ms (previously about 5,303 ms), and the full-color panel phase took 32,795 ms. Full-color waveforms remain in use. Optional short-waveform refresh is a separate future step requiring image-quality checks.
+
+## SAO Port 2 Morse LED
+
+At startup, lib/sao_morse.py starts a hardware RMT loop on SAO Port 2 GPIO1 (ESP32 GPIO4). The LED is assumed to be active-high. It repeats CQ at approximately 13 WPM using standard Morse timing: C is -.-. and Q is --.-, with one-unit element gaps and a three-unit letter gap.
+
+The requested triple space is implemented as three seven-unit word gaps between repetitions, approximately 1.938 seconds. Each dot is approximately 92.307 ms and the full repeating cycle is 4.431 seconds. RMT channel 0 runs independently of Python and uses a different channel from the badge's NeoPixel strip (channel 3), so network calls do not stretch the Morse timing.
+
+LED_PIN and ACTIVE_HIGH in lib/sao_morse.py control wiring. Startup errors are logged without preventing the dashboard from starting.
+
+The short-waveform display test measured about 6.5 seconds but visibly darkened the red. Following the user's preference, the dashboard uses the optimized full-color driver with brighter red and approximately 33-second panel refreshes.

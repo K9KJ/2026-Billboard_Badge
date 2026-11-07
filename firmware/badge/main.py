@@ -59,6 +59,13 @@ async def main():
             app.launched = True
             break
 
+    # Hardware RMT keeps Morse timing steady during blocking HTTPS downloads.
+    try:
+        from lib.sao_morse import start
+        _morse_output = start()
+    except Exception as error:
+        print("SAO Morse could not start:", error)
+
     print("Initializing main...")
 
     _button_task = aio.create_task(button_scan())
