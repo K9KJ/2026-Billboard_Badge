@@ -12,7 +12,6 @@ from apps.base_app import BaseApp
 from lib.button import UserA, UserB
 from lib.epd import display
 from lib.kev_client import date_string, fetch_recent
-from lib.sao_morse import start as start_morse
 
 CACHE = "/data/kev-cache.json"
 REFRESH_MS = 6 * 60 * 60 * 1000
@@ -172,9 +171,9 @@ class KevApp(BaseApp):
                       if self.data else "Fill in kev-wifi.json, then press B to refresh.")
             self.label(detail, 278, lvgl.font_montserrat_24, height=100)
         self.label(self.status, 573, lvgl.font_montserrat_16, 0xFF0000, height=42)
-        controls = "A: SAO1 CQ    B: Refresh    Menu +/-: Apps"
+        controls = "B: Refresh    Menu +/-: Apps"
         if self.page_count() > 1:
-            controls = "A: SAO1 CQ + next page    B: Refresh    Menu +/-: Apps"
+            controls = "A: Next page    B: Refresh    Menu +/-: Apps"
         self.label(controls, 630, lvgl.font_montserrat_16)
         lvgl.screen_load(self.screen)
         lvgl.refr_now(display.lv_display)
@@ -187,14 +186,9 @@ class KevApp(BaseApp):
         if self.launched:
             self.draw()
         if display.is_done_updating():
-            if UserA.pressed():
-                try:
-                    start_morse(pin_number=2, channel=1)
-                except Exception as error:
-                    print("SAO1 Morse could not start:", error)
-                if self.page_count() > 1:
-                    self.page = (self.page + 1) % self.page_count()
-                    self.draw()
+            if UserA.pressed() and self.page_count() > 1:
+                self.page = (self.page + 1) % self.page_count()
+                self.draw()
             elif UserB.pressed() or time.ticks_diff(time.ticks_ms(), self.next_check) >= 0:
                 await self.refresh()
         await aio.sleep_ms(100)
