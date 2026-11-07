@@ -10,6 +10,8 @@ Fill in the ssid and password strings in kev-wifi.json locally, then copy that f
 
 Upload firmware/badge/apps/kev.py to /apps/kev.py, firmware/badge/lib/kev_client.py to /lib/kev_client.py and firmware/badge/data/kev-ca.pem to /data/kev-ca.pem.
 
+The optional "startup_app": "CISA KEV" field in /data/panel_config.json makes the dashboard launch automatically at power-on. main.py supports this setting by app name. Without it, normal menu startup is used.
+
 Restart the badge, select CISA KEV with Menu +/- and press A or B to launch it. A advances to the next CVE, B refreshes, and Menu +/- returns to app selection. While the app is selected it refreshes every six hours and retries failures after fifteen minutes.
 
 The clock synchronizes using NTP before each fetch. The app checks CISA's certificate and hostname against the included DigiCert Global Root G3 CA. If CISA changes its certificate chain, the trust file may need updating.
